@@ -43,13 +43,13 @@
  */
 
 // Enable debug prints to serial monitor
-//#define MY_DEBUG
+#define MY_DEBUG
 
 // Define a static node address, remove if you want auto address assignment
 //#deine MY_NODE_ID 3
 
 // Enable and select radio type attached
-#define MY_NODE_ID 3
+#define MY_NODE_ID 100
 
 // Enable and select radio type attached
 #define MY_RADIO_RFM69
@@ -62,6 +62,7 @@
 #include <MySensors.h>
 #include <Wire.h>
 #include <SI7021.h>
+#include <Adafruit_BMP085.h>
 #ifndef MY_OTA_FIRMWARE_FEATURE
 #include "drivers/SPIFlash/SPIFlash.cpp"
 #endif
@@ -79,8 +80,7 @@
 #define AVERAGES 2
 
 // Child sensor ID's
-#define CHILD_ID_TEMP  1
-#define CHILD_ID_HUM   2
+#define CHILD_ID  1
 
 // How many milli seconds between each measurement
 #define MEASURE_INTERVAL 60000
@@ -108,11 +108,13 @@ const int sha204Pin = ATSHA204_PIN;
 atsha204Class sha204(sha204Pin);
 
 SI7021 humiditySensor;
+Adafruit_BMP085 bmp;
 SPIFlash flash(8, 0x1F65);
 
 // Sensor messages
-MyMessage msgHum(CHILD_ID_HUM, V_HUM);
-MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
+MyMessage msgTemp(CHILD_ID, V_TEMP);
+MyMessage msgHum(CHILD_ID, V_VAR1);
+MyMessage msgPress(CHILD_ID, V_VAR2);
 
 #ifdef BATT_SENSOR
 MyMessage msgBatt(BATT_SENSOR, V_VOLTAGE);
@@ -162,13 +164,14 @@ void setup() {
   digitalWrite(LED_PIN, HIGH);
 
   humiditySensor.begin();
+  bmp.begin();
 
   digitalWrite(LED_PIN, LOW);
 
   Serial.flush();
   Serial.println(F(" - Online!"));
 
-  isMetric = getConfig().isMetric;
+  isMetric = getControllerConfig().isMetric;
   Serial.print(F("isMetric: ")); Serial.println(isMetric);
   raHum.clear();
   sendTempHumidityMeasurements(false);
@@ -183,8 +186,7 @@ void setup() {
 void presentation()  {
   sendSketchInfo("Sensebender Micro", RELEASE);
 
-  present(CHILD_ID_TEMP,S_TEMP);
-  present(CHILD_ID_HUM,S_HUM);
+  present(CHILD_ID,S_TEMP);
 
 #ifdef BATT_SENSOR
   present(BATT_SENSOR, S_POWER);
@@ -266,6 +268,7 @@ void sendTempHumidityMeasurements(bool force)
     Serial.print("T: ");Serial.println(temperature);
     Serial.print("H: ");Serial.println(humidity);
 
+    send(msgPress.set(bmp.readSealevelPressure(49)/100.0,1));
     send(msgTemp.set(temperature,1));
     send(msgHum.set(humidity));
     lastTemperature = temperature;
@@ -300,9 +303,9 @@ void sendBattLevel(bool force)
 
     // Calculate percentage
 
-    vcc = vcc - 1900; // subtract 1.9V from vcc, as this is the lowest voltage we will operate at
+    vcc = vcc - 2600; // 2.6V is battery low for CR123
 
-    long percent = vcc / 14.0;
+    long percent = vcc / 9.1; // Battery full is 3.5V for CR123 (and 3.5-2.6 = 0.9V)
     sendBatteryLevel(percent);
     transmission_occured = true;
   }
